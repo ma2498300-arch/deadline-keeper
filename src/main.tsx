@@ -172,6 +172,7 @@ function DashboardApp({ onLogout }: { onLogout: () => void }) {
   const language = settings.language
   return <div className="app-shell font-body" dir={settings.language === 'ar' ? 'rtl' : 'ltr'} style={{ backgroundColor: background?.color || '#2E2924' }}>
     {background?.url && (background.type === 'video' ? <video className="app-background" src={background.url} autoPlay muted loop playsInline /> : <img className="app-background" src={background.url} alt="" />)}
+    <div className="background-particles" aria-hidden="true">{Array.from({ length: 18 }, (_, index) => <i key={index} />)}</div>
     <header className="topbar content-width">
       <a className="brand" href="/" aria-label="Deadline Keeper home">{settings.profileImageUrl ? <img className="profile-avatar" src={settings.profileImageUrl} alt="" /> : <span className="brand-mark">dk</span>}<span>Deadline Keeper</span></a>
       <div className="top-actions">
@@ -213,6 +214,18 @@ function DashboardApp({ onLogout }: { onLogout: () => void }) {
   </div>
 }
 
+function assignTimelineLanes(projects: Project[]) {
+  const laneEnds: number[] = []
+  return projects.map(project => {
+    const start = new Date(project.startDate).getTime()
+    const end = new Date(project.deadline).getTime()
+    const lane = laneEnds.findIndex(laneEnd => laneEnd <= start)
+    const row = lane === -1 ? laneEnds.length : lane
+    laneEnds[row] = end
+    return { project, row }
+  })
+}
+
 function TimelineView({ projects, language, onEdit }: { projects: Project[]; language: UserSettings['language']; onEdit: (project: Project) => void }) {
   const [range, setRange] = useState<'week' | 'month' | 'year'>('month')
   const now = new Date()
@@ -225,9 +238,10 @@ function TimelineView({ projects, language, onEdit }: { projects: Project[]; lan
   if (range === 'month') rangeEnd.setMonth(rangeStart.getMonth() + 1)
   if (range === 'year') rangeEnd.setFullYear(rangeStart.getFullYear() + 1)
   const span = rangeEnd.getTime() - rangeStart.getTime()
-  const active = projects.filter(project => project.status !== 'archived').sort((a, b) => (new Date(a.deadline).getTime() - new Date(a.startDate).getTime()) - (new Date(b.deadline).getTime() - new Date(b.startDate).getTime()))
+  const active = projects.filter(project => project.status !== 'archived').sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+  const lanes = assignTimelineLanes(active)
   const position = (value: string) => Math.min(100, Math.max(0, ((new Date(value).getTime() - rangeStart.getTime()) / span) * 100))
-  return <section className="timeline-view"><div className="timeline-heading"><div><p className="eyebrow">{tr(language, 'timelineEyebrow')}</p><h1 className="font-heading">{tr(language, 'timelineTitle')} <em>{tr(language, 'openSpace')}</em></h1><p className="intro-copy">{tr(language, 'timelineCopy')}</p></div><div className="range-switcher">{(['week', 'month', 'year'] as const).map(item => <button key={item} className={range === item ? 'selected font-heading' : 'font-heading'} onClick={() => setRange(item)}>{tr(language, item)}</button>)}</div></div><div className="timeline-legend"><span><i className="legend-dot busy" />{tr(language, 'busy')}</span><span><i className="legend-dot free" />{tr(language, 'free')}</span><span className="today-key">{tr(language, 'today')} · {formatDate(now.toISOString(), language)}</span></div><div className={`timeline-board ${range}`}><div className="timeline-scale">{Array.from({ length: range === 'week' ? 7 : range === 'month' ? 5 : 12 }, (_, index) => <span key={index}>{range === 'week' ? translations[language].dayLabels[index] : range === 'month' ? `${tr(language, 'weekLabel')} ${index + 1}` : new Intl.DateTimeFormat(language === 'ar' ? 'ar' : 'en', { month: 'short' }).format(new Date(rangeStart.getFullYear(), index, 1))}</span>)}</div><div className="today-line" style={{ left: `${position(now.toISOString())}%` }} /><div className="timeline-freeband" />{active.length ? active.map((project, index) => <button className="timeline-bar font-heading" key={project.id} onClick={() => onEdit(project)} style={{ left: `${position(project.startDate)}%`, width: `${Math.max(3, position(project.deadline) - position(project.startDate))}%`, background: project.color, zIndex: active.length - index, opacity: index === 0 ? 1 : 0.82 }}><strong>{project.title}</strong><small>{formatRemaining(project.deadline, language)}</small></button>) : <p className="timeline-empty">{tr(language, 'noBlocking')}</p>}</div><div className="timeline-summary"><strong>{active.length} {active.length === 1 ? tr(language, 'activeProject') : tr(language, 'activeProjects')}</strong><span>{tr(language, 'clickBar')}</span></div></section>
+  return <section className="timeline-view"><div className="timeline-heading"><div><p className="eyebrow">{tr(language, 'timelineEyebrow')}</p><h1 className="font-heading">{tr(language, 'timelineTitle')} <em>{tr(language, 'openSpace')}</em></h1><p className="intro-copy">{tr(language, 'timelineCopy')}</p></div><div className="range-switcher">{(['week', 'month', 'year'] as const).map(item => <button key={item} className={range === item ? 'selected font-heading' : 'font-heading'} onClick={() => setRange(item)}>{tr(language, item)}</button>)}</div></div><div className="timeline-legend"><span><i className="legend-dot busy" />{tr(language, 'busy')}</span><span><i className="legend-dot free" />{tr(language, 'free')}</span><span className="today-key">{tr(language, 'today')} · {formatDate(now.toISOString(), language)}</span></div><div className={`timeline-board ${range}`} style={{ minHeight: `${Math.max(390, 160 + lanes.length * 52)}px` }}><div className="timeline-scale">{Array.from({ length: range === 'week' ? 7 : range === 'month' ? 5 : 12 }, (_, index) => <span key={index}>{range === 'week' ? translations[language].dayLabels[index] : range === 'month' ? `${tr(language, 'weekLabel')} ${index + 1}` : new Intl.DateTimeFormat(language === 'ar' ? 'ar' : 'en', { month: 'short' }).format(new Date(rangeStart.getFullYear(), index, 1))}</span>)}</div><div className="today-line" style={{ left: `${position(now.toISOString())}%` }} /><div className="timeline-freeband" />{active.length ? lanes.map(({ project, row }) => <button className="timeline-bar font-heading" key={project.id} onClick={() => onEdit(project)} style={{ '--row': row, left: `${position(project.startDate)}%`, width: `${Math.max(3, position(project.deadline) - position(project.startDate))}%`, background: project.color } as React.CSSProperties}><strong>{project.title}</strong><small>{formatRemaining(project.deadline, language)}</small></button>) : <p className="timeline-empty">{tr(language, 'noBlocking')}</p>}</div><div className="timeline-summary"><strong>{active.length} {active.length === 1 ? tr(language, 'activeProject') : tr(language, 'activeProjects')}</strong><span>{tr(language, 'clickBar')}</span></div></section>
 }
 
 function SettingsPanel({ settings, language, onChange, onClose }: { settings: UserSettings; language: UserSettings['language']; onChange: (settings: UserSettings) => void; onClose: () => void }) {
